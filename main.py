@@ -30,9 +30,6 @@ output_folder = "/Users/willweste/Door-Camera-Videos"
 
 out = None
 
-# Load William's face encodings from the pickle file
-with open("william_face_encodings.pkl", "rb") as f:
-    william_face_encodings = pickle.load(f)
 
 while True:
     _, frame = cap.read()
@@ -57,15 +54,6 @@ while True:
             file_path = os.path.join(output_folder, file_name)
             out = cv2.VideoWriter(file_path, fourcc, 20, frame_size)
             print("Started Recording!")
-
-            # Perform facial recognition on the detected face
-            face_encoding = face_recognition.face_encodings(frame_rgb, [(0, 0, frame.shape[0], frame.shape[1])])
-            if len(face_encoding) > 0:
-                face_encoding = face_encoding[0]
-                # Compare the detected face encoding with William's face encodings
-                results = face_recognition.compare_faces(william_face_encodings, face_encoding)
-                if True in results:
-                    print("William detected!")
 
     elif detection:
         if timer_started:
