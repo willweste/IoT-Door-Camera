@@ -3,16 +3,19 @@ import os
 import time
 import datetime
 import mediapipe as mp
-import face_recognition
-import pickle
+from video_wiper import clean_up_old_videos
 from cvzone.PoseModule import PoseDetector
 
 cap = cv2.VideoCapture(0)
 
 # Initialize MediaPipe Face Mesh
 mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, min_detection_confidence=0.5,
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=3, min_detection_confidence=0.5,
                                   min_tracking_confidence=0.5)
+
+# Initialize MediaPipe Pose
+mp_pose = mp.solutions.pose
+pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
 # Create PoseDetector object for body detection
 detector = PoseDetector()
@@ -20,7 +23,7 @@ detector = PoseDetector()
 detection = False
 detection_stopped_time = None
 timer_started = False
-SECONDS_TO_RECORD_AFTER_DETECTION = 5
+SECONDS_TO_RECORD_AFTER_DETECTION = 8
 
 frame_size = (int(cap.get(3)), int(cap.get(4)))
 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -29,7 +32,6 @@ fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 output_folder = "/Users/willweste/Door-Camera-Videos"
 
 out = None
-
 
 while True:
     _, frame = cap.read()
@@ -40,11 +42,15 @@ while True:
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(frame_rgb)
 
+    # Use MediaPipe Pose for body detection
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results_pose = pose.process(frame_rgb)
+
     # Use cvzone PoseDetector for body detection
     frame = detector.findPose(frame)
     lmList, bboxInfo = detector.findPosition(frame, bboxWithHands=False)
 
-    if (results is not None and results.multi_face_landmarks) or len(lmList) > 0:
+    if results.multi_face_landmarks or results_pose.pose_landmarks or len(lmList) > 0:
         if detection:
             timer_started = False
         else:
@@ -54,6 +60,7 @@ while True:
             file_path = os.path.join(output_folder, file_name)
             out = cv2.VideoWriter(file_path, fourcc, 20, frame_size)
             print("Started Recording!")
+            clean_up_old_videos()
 
     elif detection:
         if timer_started:
@@ -66,6 +73,17 @@ while True:
             timer_started = True
             detection_stopped_time = time.time()
 
+    if results.multi_face_landmarks:
+        for face_landmarks in results.multi_face_landmarks:
+            # Draw the face mesh landmarks on the frame
+            for idx, landmark in enumerate(face_landmarks.landmark):
+                h, w, c = frame.shape
+                x, y = int(landmark.x * w), int(landmark.y * h)
+                cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
+
+    # Draw the body landmarks on the frame
+    if results_pose.pose_landmarks:
+        mp.solutions.drawing_utils.draw_landmarks(frame, results_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
     if detection:
         out.write(frame)
 
@@ -79,4 +97,3 @@ while True:
 out.release()
 cap.release()
 cv2.destroyAllWindows()
-
