@@ -20,7 +20,12 @@ pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_t
 # Create PoseDetector object for body detection
 detector = PoseDetector()
 
+# Start Recording Parameters
 detection = False
+detection_start_time = None
+SECONDS_TO_START_RECORDING = 5
+
+# Stop Recording Parameters
 detection_stopped_time = None
 timer_started = False
 SECONDS_TO_RECORD_AFTER_DETECTION = 8
@@ -51,27 +56,30 @@ while True:
     lmList, bboxInfo = detector.findPosition(frame, bboxWithHands=False)
 
     if results.multi_face_landmarks or results_pose.pose_landmarks or len(lmList) > 0:
-        if detection:
-            timer_started = False
-        else:
+        if not detection:
+            detection_start_time = time.time()
             detection = True
-            current_time = datetime.datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-            file_name = f"{current_time}.mp4"
-            file_path = os.path.join(output_folder, file_name)
-            out = cv2.VideoWriter(file_path, fourcc, 20, frame_size)
-            print("Started Recording!")
-            clean_up_old_videos()
 
-    elif detection:
-        if timer_started:
-            if time.time() - detection_stopped_time >= SECONDS_TO_RECORD_AFTER_DETECTION:
-                detection = False
-                timer_started = False
-                out.release()
-                print('Stop Recording!')
-        else:
-            timer_started = True
-            detection_stopped_time = time.time()
+        if time.time() - detection_start_time >= SECONDS_TO_START_RECORDING:
+            if out is None:
+                current_time = datetime.datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+                file_name = f"{current_time}.mp4"
+                file_path = os.path.join(output_folder, file_name)
+                out = cv2.VideoWriter(file_path, fourcc, 20, frame_size)
+                print("Started Recording!")
+                clean_up_old_videos()
+    else:
+        if detection:
+            if timer_started:
+                if time.time() - detection_stopped_time >= SECONDS_TO_RECORD_AFTER_DETECTION:
+                    detection = False
+                    timer_started = False
+                    out.release()
+                    out = None
+                    print('Stop Recording!')
+            else:
+                timer_started = True
+                detection_stopped_time = time.time()
 
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
@@ -84,13 +92,14 @@ while True:
     # Draw the body landmarks on the frame
     if results_pose.pose_landmarks:
         mp.solutions.drawing_utils.draw_landmarks(frame, results_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-    if detection:
+
+    if out is not None:
         out.write(frame)
 
     cv2.imshow("Camera", frame)
 
     if cv2.waitKey(1) == ord('q'):
-        if detection:
+        if out is not None:
             out.release()
         break
 
